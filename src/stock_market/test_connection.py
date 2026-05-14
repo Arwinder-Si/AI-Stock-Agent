@@ -11,39 +11,19 @@ def test_dhan_connection():
         token = get_fresh_token()
         client_id = os.getenv("DHAN_CLIENT_ID")
         
-        # 2. Test API Access (Deeper Auto-Discovery)
-        import dhanhq as d_module
-        
-        # Possible class names in various versions
-        class_candidates = [
-            getattr(d_module, 'dhanhq', None),
-            getattr(d_module, 'Dhan', None),
-            d_module
-        ]
-        
-        dhan = None
-        profile = {}
-
-        for cls in class_candidates:
-            if cls is None: continue
-            
-            # Try different ways to initialize this specific class
-            sigs = [
-                lambda: cls(token),
-                lambda: cls(client_id, token),
-                lambda: cls(client_id=client_id, access_token=token)
-            ]
-            
-            for sig in sigs:
-                try:
-                    dhan = sig()
-                    profile = dhan.get_profile()
-                    if profile.get('status') == 'success':
-                        break
-                except:
-                    continue
-            if dhan and profile.get('status') == 'success':
-                break
+        # 2. Test API Access
+        from dhanhq import dhanhq
+        try:
+            dhan = dhanhq(token)
+            profile = dhan.get_fund_limits()
+            if profile.get('status') == 'success':
+                print(f"\n[SUCCESS] Connected to Dhan successfully!")
+                print(f"Fund Limits Status: {profile.get('status')}")
+                print("Your Automated Login system is working perfectly!")
+            else:
+                print(f"\n[FAILURE] Connected but could not fetch funds: {profile}")
+        except Exception as e:
+            print(f"\n[ERROR] Connection failed: {str(e)}")
 
         if dhan and profile.get('status') == 'success':
             name = profile.get('data', {}).get('clientName', 'Unknown')

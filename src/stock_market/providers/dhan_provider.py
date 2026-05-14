@@ -24,12 +24,8 @@ class DhanProvider:
 
     def __init__(self, client_id: str, access_token: str) -> None:
         from dhanhq import dhanhq
-        try:
-            # Try 2-arg version (Client ID + Token)
-            self.dhan = dhanhq(client_id, access_token)
-        except TypeError:
-            # Fallback to 1-arg version (Token only)
-            self.dhan = dhanhq(access_token)
+        # In this version of dhanhq, only access_token is required.
+        self.dhan = dhanhq(access_token)
 
     def option_chain(self, expiry: str) -> Any:
         # Underlying security id for NIFTY in Dhan examples is often 13.
