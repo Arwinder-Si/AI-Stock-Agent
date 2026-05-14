@@ -14,8 +14,8 @@ def test_dhan_connection():
         # 2. Test API Access
         import dhanhq
         try:
-            # The class is located at dhanhq.dhanhq
-            dhan = dhanhq.dhanhq(client_id, token)
+            # The class is dhanhq.dhanhq and it only needs the access_token
+            dhan = dhanhq.dhanhq(token)
             profile = dhan.get_fund_limits()
             if profile.get('status') == 'success':
                 print(f"\n[SUCCESS] Connected to Dhan successfully!")
