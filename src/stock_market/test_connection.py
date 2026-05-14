@@ -12,10 +12,10 @@ def test_dhan_connection():
         client_id = os.getenv("DHAN_CLIENT_ID")
         
         # 2. Test API Access
-        import dhanhq
+        from dhanhq import dhanhq
         try:
-            # The class is dhanhq.dhanhq and it only needs the access_token
-            dhan = dhanhq.dhanhq(token)
+            # Use keyword arguments to avoid positional confusion
+            dhan = dhanhq(access_token=token)
             profile = dhan.get_fund_limits()
             if profile.get('status') == 'success':
                 print(f"\n[SUCCESS] Connected to Dhan successfully!")
