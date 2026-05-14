@@ -11,25 +11,39 @@ def test_dhan_connection():
         token = get_fresh_token()
         client_id = os.getenv("DHAN_CLIENT_ID")
         
-        # 2. Test API Access (Auto-Discovery Mode)
-        dhan = None
-        signatures = [
-            lambda: dhanhq(client_id, token),
-            lambda: dhanhq(token),
-            lambda: dhanhq(client_id=client_id, access_token=token)
+        # 2. Test API Access (Deeper Auto-Discovery)
+        import dhanhq as d_module
+        
+        # Possible class names in various versions
+        class_candidates = [
+            getattr(d_module, 'dhanhq', None),
+            getattr(d_module, 'Dhan', None),
+            d_module
         ]
         
-        for i, sig in enumerate(signatures):
-            try:
-                print(f" - Attempting connection signature {i+1}...")
-                dhan = sig()
-                # Verify it actually works by calling a simple method
-                profile = dhan.get_profile()
-                if profile.get('status') == 'success':
-                    break
-            except Exception as e:
-                print(f"   Signature {i+1} failed: {str(e)}")
-                continue
+        dhan = None
+        profile = {}
+
+        for cls in class_candidates:
+            if cls is None: continue
+            
+            # Try different ways to initialize this specific class
+            sigs = [
+                lambda: cls(token),
+                lambda: cls(client_id, token),
+                lambda: cls(client_id=client_id, access_token=token)
+            ]
+            
+            for sig in sigs:
+                try:
+                    dhan = sig()
+                    profile = dhan.get_profile()
+                    if profile.get('status') == 'success':
+                        break
+                except:
+                    continue
+            if dhan and profile.get('status') == 'success':
+                break
 
         if dhan and profile.get('status') == 'success':
             name = profile.get('data', {}).get('clientName', 'Unknown')
