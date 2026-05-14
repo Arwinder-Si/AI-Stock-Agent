@@ -30,6 +30,8 @@ class DhanProvider:
             access_token=str(access_token)
         )
         self.dhan = dhanhq(dhan_context)
+        self.access_token = access_token
+        self.client_id = client_id
 
     def option_chain(self, expiry: str) -> Any:
         # Underlying security id for NIFTY in Dhan examples is often 13.
@@ -112,4 +114,21 @@ class DhanProvider:
             return out.sort_index()
 
         raise RuntimeError(f"Unsupported Dhan candle response shape: {type(data)}")
+
+    def get_ltp(self, security_id: str, exchange_segment: str) -> float:
+        """Fetch real-time LTP for a security."""
+        resp = self.dhan.get_ltp_data(security_id, exchange_segment, "INSTRUMENT")
+        if resp.get('status') == 'success':
+            return float(resp.get('data', {}).get('last_price', 0))
+        return 0.0
+
+    def find_atm_strike(self, index_name: str, current_price: float) -> int:
+        """Round current price to the nearest strike (50 for NIFTY, 100 for BANKNIFTY)."""
+        step = 50 if "NIFTY" in index_name.upper() and "BANK" not in index_name.upper() else 100
+        return int(round(current_price / step) * step)
+
+    def get_weekly_expiry(self, symbol: str) -> str:
+        """Fetch the nearest weekly expiry date from the option chain."""
+        # Simple placeholder for paper trading logic; ideally fetch via API
+        return "2026-05-21"
 

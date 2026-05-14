@@ -2,9 +2,12 @@ README.md
 pyproject.toml
 src/stock_market/__init__.py
 src/stock_market/__main__.py
+src/stock_market/agent.py
+src/stock_market/auth_manager.py
 src/stock_market/backtest.py
 src/stock_market/cli.py
 src/stock_market/indicators.py
+src/stock_market/live_agent_runner.py
 src/stock_market/paper_dhan.py
 src/stock_market/strategy_3pm_breakout.py
 src/stock_market.egg-info/PKG-INFO

@@ -9,15 +9,23 @@ Requires-Dist: numpy>=1.24.0
 Requires-Dist: yfinance>=0.2.40
 Requires-Dist: dhanhq>=2.0.0
 
-# Stock market — NIFTY 3PM breakout playbook
+# AI-Stock-Agent: Professional Scalper AI Trading Agent
 
-This repo contains a **mechanical playbook** (docs) and a **Python backtest** for the late-session 3:00–3:10 breakout idea on **NIFTY 5-minute data** (signals on the index; P&L simulated in **index points**). A **TradingView Pine** helper is under `tradingview/`.
+This repo contains a **mechanical playbook** (docs) and a **Python backtest** for the late-session 3:00–3:10 breakout idea on **NIFTY 5-minute data**. It includes an automated **Decision Agent** that selects the best strategy (Pro Scalper vs Super Scalper) based on market context (VIX, Trend, Confluence).
 
 ## Install
 
 ```powershell
 cd C:\Users\arwin\Desktop\Stock_market
 pip install -e .
+```
+
+## AI Trading Agent
+
+The system includes a meta-strategy agent that evaluates Nifty, Bank Nifty, and VIX in real-time.
+
+```powershell
+python -m stock_market.cli agent --nifty-csv data\nifty_5m.csv --bank-csv data\bank_5m.csv --vix-csv data\vix_5m.csv --date 2026-05-14
 ```
 
 ## Backtest (CSV)
@@ -36,41 +44,17 @@ Outputs:
 
 ### Useful CLI knobs
 
-- `--slippage` — adverse slippage in index points (default `0.5`)
-- `--reward-r` — target as multiple of risk (default `1.35`)
-- `--stop-mode` — `opposite_side` | `half_ref_range`
-- `--min-ref-range` — minimum 2:55 candle range (points)
-- `--volume-mult` — breakout volume vs rolling average
-- `--max-vwap-dev` — max `|close−VWAP|/VWAP` to allow (default `0.012`)
-- `--ema-flat-max-slope` — skip if EMA slope (points / lookback) is below this
-- `--vwap-chop-max` — max VWAP crossings in lookback window
-- `--strict-expiry` — skip on configured expiry weekdays
-
-## Backtest (Yahoo Finance — quick “API” smoke test)
-
-Uses the `yfinance` package (HTTP to Yahoo). **No API key.** NIFTY 50 index symbol is **`^NSEI`**. Intraday 5m history is **short** (often on the order of ~60 days — see Yahoo limits).
-
-```powershell
-python -m stock_market.cli backtest --provider yfinance --symbol "^NSEI" --yf-period 60d --output-dir out_yf
-```
-
-Optional calendar window (dates are passed through to Yahoo as `YYYY-MM-DD`):
-
-```powershell
-python -m stock_market.cli backtest --provider yfinance --symbol "^NSEI" --start 2026-03-01 --end 2026-04-17 --output-dir out_yf
-```
-
-Data is normalized to **Asia/Kolkata** bar opens to match the strategy. This is **not** NSE’s official feed; use your broker for production accuracy.
-
-**Why 0 trades with default filters?** Yahoo’s `^NSEI` bars usually have **volume = 0** (index), and many real breakouts fail the **VWAP + EMA alignment** rule late in the day — `skips.json` will show `VWAP_EMA_NOT_ALIGNED`. Volume is auto-ignored when the whole session sums to 0. For a looser smoke test on this feed, add **`--no-vwap-ema-align`** (playbook‑strict mode keeps alignment **on** by default).
-
-**PATH warning from pip:** `stock-market.exe` may install outside your PATH. Call the CLI as `python -m stock_market.cli ...` (as above) or add the printed `Scripts` folder to PATH.
+- `--require-trend-align` — only trade with the day's trend
+- `--require-orb` — only trade if breaking the morning range
+- `--trail-reversal` — exit instantly on a 5m candle reversal
+- `--max-sl` — cap risk and tighten SL on big bars
+- `--exit-time` — HH:MM hard exit for scalpers (e.g. 15:10)
 
 ## Data providers
 
 - **`CsvMarketDataProvider`** — local file (used by CLI).
+- **`DhanProvider`** — real-time data and paper trading via Dhan HQ.
 - **`YFinanceMarketDataProvider`** — live download via `yfinance` (`--provider yfinance`).
-- **`StubMarketDataProvider`** — placeholder; swap for **Zerodha Kite**, **Upstox**, **Dhan**, etc. by implementing [`MarketDataProvider.load_ohlcv_5m`](src/stock_market/providers/base.py) (return a DataFrame indexed by **IST** opens, columns `open,high,low,close,volume`).
 
 ## Docs
 
@@ -79,8 +63,8 @@ Data is normalized to **Asia/Kolkata** bar opens to match the strategy. This is 
 
 ## TradingView
 
-- **Indicator (labels):** [tradingview/3pm_breakout_nifty.pine](tradingview/3pm_breakout_nifty.pine) — paste into Pine Editor (5m, timezone Asia/Kolkata).
-- **Strategy (orders / backtest):** [tradingview/3pm_breakout_nifty_strategy.pine](tradingview/3pm_breakout_nifty_strategy.pine) — same chart; **2:55** ref on the **confirmed** 14:55 bar. **Default:** `Stop-at-ref` **ON** → stop orders at ref, armed at **15:00** (active through **15:05**); `process_orders_on_close` is a **compile-time constant** in the `strategy()` call (default **`false`**) so intrabar stops can fill on 5m **OHLC**. **Close-beyond-ref mode:** turn `Stop-at-ref` **OFF** and, in the script, set `process_orders_on_close = true` in `strategy(...)` (TradingView does not allow tying this flag to an input). Brackets after a stop fill use **avg entry** and ref-based SL/TP.
+- **Indicator (labels):** [tradingview/3pm_breakout_nifty.pine](tradingview/3pm_breakout_nifty.pine)
+- **Strategy (orders / backtest):** [tradingview/3pm_breakout_nifty_strategy.pine](tradingview/3pm_breakout_nifty_strategy.pine)
 
 ## Disclaimer
 

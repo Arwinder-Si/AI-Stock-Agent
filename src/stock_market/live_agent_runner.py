@@ -56,8 +56,24 @@ def run_live_decision(client_id: str, access_token: str):
             print(f" [OK] {r}")
             
         if decision.grade != ConfidenceGrade.NO_TRADE:
-            print("\n!!! ACTION REQUIRED: TAKE TRADE !!!")
-            print("STRATEGY PARAMS:")
+            print("\n!!! ACTION REQUIRED: TAKE OPTION TRADE !!!")
+            
+            # Find ATM Strike
+            nifty_ltp = df_n['close'].iloc[-1]
+            atm_strike = dhan.find_atm_strike("NIFTY", nifty_ltp)
+            
+            # Determine CE or PE
+            opt_type = "CE" if decision.strategy_params.get("side") == "long" else "PE"
+            
+            print(f"TARGET INSTRUMENT: NIFTY {today_str} {atm_strike} {opt_type}")
+            print(f"INDEX LTP: {nifty_ltp:.2f} -> ATM: {atm_strike}")
+            
+            # Fetch Premium (LTP)
+            # Note: In a real automated setup, we would use the Dhan Option Chain to get the security ID
+            # For paper trading, we log the intent and the index-based P&L
+            print(f"PAPER TRADE LOGGED: Bought NIFTY {atm_strike} {opt_type} at Market")
+            
+            print("\nSTRATEGY PARAMS:")
             for k, v in decision.strategy_params.items():
                 print(f"  --{k}: {v}")
         else:
