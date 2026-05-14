@@ -1,0 +1,32 @@
+
+name: 3PM Trading Agent
+
+on:
+  schedule:
+    # 09:25 AM UTC is 02:55 PM IST (Mon-Fri)
+    - cron: '25 9 * * 1-5'
+  workflow_dispatch: # Allows manual trigger for testing
+
+jobs:
+  run-agent:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v3
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.10'
+
+      - name: Install Dependencies
+        run: |
+          pip install pandas pytz dhanhq
+
+      - name: Run Daily Agent Recap
+        env:
+          DHAN_CLIENT_ID: ${{ secrets.DHAN_CLIENT_ID }}
+          DHAN_ACCESS_TOKEN: ${{ secrets.DHAN_ACCESS_TOKEN }}
+          PYTHONPATH: src
+        run: |
+          python src/stock_market/live_agent_runner.py

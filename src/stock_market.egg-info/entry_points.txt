@@ -1,0 +1,2 @@
+[console_scripts]
+stock-market = stock_market.cli:main

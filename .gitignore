@@ -1,0 +1,22 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+venv/
+.env
+
+# Backtest Output
+out*/
+metrics.json
+trades.csv
+skips.json
+
+# Data
+archive/
+archive.zip
+data/
+
+# IDE
+.vscode/
+.idea/
+.gemini/

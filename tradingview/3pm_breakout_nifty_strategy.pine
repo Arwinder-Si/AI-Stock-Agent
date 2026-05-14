@@ -1,0 +1,248 @@
+//@version=5
+// TradingView requires process_orders_on_close to be a constant (not an input).
+// false = intrabar stop entries at ref (default). For close-beyond-ref on the signal bar,
+// change the next line to true AND turn "Stop-at-ref" input OFF.
+strategy(
+     title               = "3PM Breakout NIFTY (5m)",
+     shorttitle          = "3PM NIFTY",
+     overlay             = true,
+     pyramiding          = 0,
+     initial_capital     = 1000000,
+     default_qty_type    = strategy.percent_of_equity,
+     default_qty_value   = 10,
+     commission_type     = strategy.commission.percent,
+     commission_value    = 0.03,
+     slippage            = 2,
+     process_orders_on_close = false,
+     calc_on_every_tick      = false,
+     max_labels_count    = 100 )
+
+// -----------------------------------------------------------------------------
+// Inputs
+// -----------------------------------------------------------------------------
+intrabarStopEntries = input.bool(true, "Stop-at-ref (intrabar entries)", group = "Session", tooltip = "ON = stop orders at ref (needs process_orders_on_close=false in strategy()). OFF = close beyond ref; set process_orders_on_close=true in source for correct bar-close fills.")
+
+tzInput = input.string("Asia/Kolkata", "Timezone", group = "Session")
+stopBufferTicks = input.int(0, "Stop buffer (ticks beyond ref)", minval = 0, group = "Session", tooltip = "Long stop = refHigh + ticks×mintick; Short stop = refLow − ticks×mintick")
+
+minRefPts   = input.float(5.0, "Min reference range (points)", minval = 0, group = "Reference")
+stopMode    = input.string("Opposite side", "Stop placement", options = ["Opposite side", "Half of ref range"], group = "Risk")
+rewardR     = input.float(1.35, "Take profit (× R)", minval = 0.5, step = 0.05, group = "Risk")
+
+bodyMinFrac = input.float(0.35, "Min body / range", minval = 0.05, maxval = 1.0, group = "Filters")
+volMult     = input.float(1.0, "Volume vs SMA mult", minval = 0, group = "Filters")
+volLen      = input.int(12, "Volume SMA length", minval = 1, group = "Filters")
+emaLen      = input.int(20, "EMA length", minval = 1, group = "Filters")
+maxVwapDev  = input.float(0.012, "Max |close−VWAP| / VWAP", minval = 0.0001, step = 0.001, group = "Filters")
+
+useEmaFlat = input.bool(true, "Filter: skip dead-flat EMA", group = "Filters")
+emaFlatLb  = input.int(6, "EMA slope lookback (bars)", minval = 1, group = "Filters")
+emaFlatMin = input.float(2.0, "Min EMA slope (points)", minval = 0, step = 0.25, group = "Filters")
+
+useChop = input.bool(true, "Filter: VWAP chop (cross count)", group = "Filters")
+chopLen = input.int(18, "Chop window (bars)", minval = 2, group = "Filters")
+chopMax = input.int(8, "Max VWAP crosses in window", minval = 0, group = "Filters")
+
+useExpirySkip = input.bool(false, "Skip on expiry weekday", group = "Session")
+expiryDow     = input.int(dayofweek.tuesday, "Expiry weekday (Pine enum)", minval = dayofweek.sunday, maxval = dayofweek.saturday, group = "Session")
+
+showPlots = input.bool(true, "Plot ref high / low", group = "Display")
+
+// -----------------------------------------------------------------------------
+// Session clock (bar open time in tzInput)
+// -----------------------------------------------------------------------------
+h  = hour(time, tzInput)
+mi = minute(time, tzInput)
+
+isRefBar      = h == 14 and mi == 55
+inEntry       = (h == 15 and mi == 0) or (h == 15 and mi == 5)
+isHardExitBar = h == 15 and mi == 20
+// First 5m bar of the 15:00 slot (previous bar is 14:55)
+is1500OpenBar = h == 15 and mi == 0 and h[1] == 14 and mi[1] == 55
+// Last bar of entry window opens 15:05; when it confirms, window is over (next open 15:10)
+isEntryWindowEnd = barstate.isconfirmed and h == 15 and mi == 5
+
+newDay = timeframe.change("1D")
+
+// -----------------------------------------------------------------------------
+// Reference range: commit only on confirmed 14:55 bar
+// -----------------------------------------------------------------------------
+var float refHigh = na
+var float refLow = na
+var bool tradedToday = false
+var bool breakoutSent = false
+var bool bracketAttached = false
+
+if newDay
+    tradedToday := false
+    breakoutSent := false
+    bracketAttached := false
+    refHigh := na
+    refLow := na
+
+if barstate.isconfirmed and isRefBar
+    refHigh := high
+    refLow := low
+
+refRange = not na(refHigh) and not na(refLow) ? refHigh - refLow : na
+refSizeOK = not na(refRange) and refRange >= minRefPts
+
+// -----------------------------------------------------------------------------
+// Indicators
+// -----------------------------------------------------------------------------
+ema20  = ta.ema(close, emaLen)
+vwap   = ta.vwap(hlc3)
+volAvg = ta.sma(volume, volLen)
+vwapXUp = ta.crossover(close, vwap)
+vwapXDn = ta.crossunder(close, vwap)
+
+rng = math.max(high - low, syminfo.mintick)
+bodyFrac = rng > 0 ? math.abs(close - open) / rng : 0.0
+
+vwapCrossCount(int len) =>
+    int cnt = 0
+    for i = 0 to len - 1
+        if vwapXUp[i] or vwapXDn[i]
+            cnt += 1
+    cnt
+
+chopCnt = useChop ? vwapCrossCount(chopLen) : 0
+chopOK  = not useChop or chopCnt <= chopMax
+
+emaSlope = math.abs(ema20 - ema20[emaFlatLb])
+notFlat  = not useEmaFlat or (not na(emaSlope) and emaSlope >= emaFlatMin)
+
+expirySkip = useExpirySkip and dayofweek(time, tzInput) == expiryDow
+
+// --- Close-confirm path (signal bar close)
+brkLong  = refSizeOK and not na(refHigh) and close > refHigh
+brkShort = refSizeOK and not na(refLow) and close < refLow
+
+dirLong  = brkLong and not brkShort
+dirShort = brkShort and not brkLong
+
+alignLong  = dirLong and close >= vwap and close >= ema20
+alignShort = dirShort and close <= vwap and close <= ema20
+
+bodyOK = bodyFrac >= bodyMinFrac
+volOK  = not na(volAvg) and volume >= volAvg * volMult
+extOK  = not na(vwap) and vwap != 0 and math.abs(close - vwap) / vwap <= maxVwapDev
+
+filtersOK = bodyOK and volOK and extOK and notFlat and chopOK and not expirySkip
+
+longOK  = barstate.isconfirmed and inEntry and filtersOK and alignLong
+shortOK = barstate.isconfirmed and inEntry and filtersOK and alignShort
+
+// --- Stop-at-ref placement gates (prior bar = 14:55 when on 15:00 open bar)
+// Uses ref candle for body/vol/VWAP extension/chop/EMA slope; 15:00 open vs vwap[1]/ema20[1] for bias.
+rngRef = math.max(high[1] - low[1], syminfo.mintick)
+bodyFracRef = rngRef > 0 ? math.abs(close[1] - open[1]) / rngRef : 0.0
+bodyRefOK = bodyFracRef >= bodyMinFrac
+volRefOK = not na(volAvg[1]) and volume[1] >= volAvg[1] * volMult
+extRefOK = not na(vwap[1]) and vwap[1] != 0 and math.abs(close[1] - vwap[1]) / vwap[1] <= maxVwapDev
+chopRefOK = not useChop or chopCnt[1] <= chopMax
+emaSlopeRef = math.abs(ema20[1] - ema20[emaFlatLb + 1])
+flatRefOK = not useEmaFlat or (not na(emaSlopeRef) and emaSlopeRef >= emaFlatMin)
+
+placementOKStop = refSizeOK and not expirySkip and bodyRefOK and volRefOK and extRefOK and chopRefOK and flatRefOK
+
+tick = syminfo.mintick
+longStopPx = refHigh + stopBufferTicks * tick
+shortStopPx = refLow - stopBufferTicks * tick
+
+bullBias = open >= vwap[1] and open >= ema20[1]
+bearBias = open <= vwap[1] and open <= ema20[1]
+
+armLongStop  = placementOKStop and bullBias and not na(longStopPx)
+armShortStop = placementOKStop and bearBias and not na(shortStopPx)
+
+// -----------------------------------------------------------------------------
+// Stops & targets (absolute) — close-confirm path
+// -----------------------------------------------------------------------------
+stopLong() =>
+    stopMode == "Opposite side" ? refLow : refLow + 0.5 * refRange
+
+stopShort() =>
+    stopMode == "Opposite side" ? refHigh : refLow + 0.5 * refRange
+
+slL = stopLong()
+slS = stopShort()
+en  = close
+riskL = en - slL
+riskS = slS - en
+
+validLong = not intrabarStopEntries and longOK and not tradedToday and strategy.position_size == 0 and riskL > 0
+validShort = not intrabarStopEntries and shortOK and not tradedToday and strategy.position_size == 0 and riskS > 0
+
+tpL = en + rewardR * riskL
+tpS = en - rewardR * riskS
+
+if validLong
+    tradedToday := true
+    strategy.entry("Long", strategy.long)
+    strategy.exit("LX", from_entry = "Long", stop = slL, limit = tpL)
+
+if validShort
+    tradedToday := true
+    strategy.entry("Short", strategy.short)
+    strategy.exit("SX", from_entry = "Short", stop = slS, limit = tpS)
+
+// -----------------------------------------------------------------------------
+// Stop-at-ref: OCO breakout orders once on 15:00 bar (active through 15:05 bar)
+// -----------------------------------------------------------------------------
+ocaName = "3pm_brk"
+
+if intrabarStopEntries and is1500OpenBar and not breakoutSent and not tradedToday and strategy.position_size == 0
+    if armLongStop or armShortStop
+        breakoutSent := true
+        if armLongStop and armShortStop
+            strategy.entry("Long", strategy.long, stop = longStopPx, oca_name = ocaName, oca_type = strategy.oca.cancel, comment = "Long stop")
+            strategy.entry("Short", strategy.short, stop = shortStopPx, oca_name = ocaName, oca_type = strategy.oca.cancel, comment = "Short stop")
+        else if armLongStop
+            strategy.entry("Long", strategy.long, stop = longStopPx, comment = "Long stop")
+        else
+            strategy.entry("Short", strategy.short, stop = shortStopPx, comment = "Short stop")
+
+// Cancel unfilled breakout orders after last entry window bar confirms (still flat)
+if intrabarStopEntries and isEntryWindowEnd and strategy.position_size == 0
+    strategy.cancel("Long")
+    strategy.cancel("Short")
+
+// Bracket from actual fill (ticks) — Stop_at_ref path
+if strategy.position_size == 0
+    bracketAttached := false
+
+if intrabarStopEntries and strategy.position_size != 0 and not bracketAttached
+    bracketAttached := true
+    tradedToday := true
+    avg = strategy.position_avg_price
+    if strategy.position_size > 0
+        slPx = stopLong()
+        risk = avg - slPx
+        if risk > 0
+            tpPx = avg + rewardR * risk
+            strategy.exit("LX", from_entry = "Long", stop = slPx, limit = tpPx, comment = "SL/TP")
+        else
+            strategy.close_all(comment = "Invalid long bracket")
+    else if strategy.position_size < 0
+        slPx = stopShort()
+        risk = slPx - avg
+        if risk > 0
+            tpPx = avg - rewardR * risk
+            strategy.exit("SX", from_entry = "Short", stop = slPx, limit = tpPx, comment = "SL/TP")
+        else
+            strategy.close_all(comment = "Invalid short bracket")
+
+// Hard flat by 15:25 (close of 15:20 bar)
+if barstate.isconfirmed and isHardExitBar
+    strategy.close_all(comment = "15:25 exit")
+
+// -----------------------------------------------------------------------------
+// Plots
+// -----------------------------------------------------------------------------
+plot(showPlots ? refHigh : na, title = "Ref high", color = color.new(color.teal, 0), linewidth = 2, style = plot.style_steplinebr)
+plot(showPlots ? refLow : na, title = "Ref low", color = color.new(color.orange, 0), linewidth = 2, style = plot.style_steplinebr)
+
+plotshape(validLong, title = "Long (close)", style = shape.triangleup, location = location.belowbar, size = size.tiny, color = color.new(color.green, 30))
+plotshape(validShort, title = "Short (close)", style = shape.triangledown, location = location.abovebar, size = size.tiny, color = color.new(color.red, 30))
+plotshape(intrabarStopEntries and is1500OpenBar and breakoutSent, title = "Breakout armed", style = shape.diamond, location = location.top, size = size.tiny, color = color.new(color.blue, 40))

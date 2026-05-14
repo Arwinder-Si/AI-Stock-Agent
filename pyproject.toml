@@ -1,0 +1,22 @@
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "stock-market"
+version = "0.1.0"
+description = "3PM breakout playbook + NIFTY 5m backtest"
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+    "pandas>=2.0.0",
+    "numpy>=1.24.0",
+    "yfinance>=0.2.40",
+    "dhanhq>=2.0.0",
+]
+
+[project.scripts]
+stock-market = "stock_market.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]

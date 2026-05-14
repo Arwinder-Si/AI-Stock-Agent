@@ -1,0 +1,75 @@
+//@version=5
+indicator("3PM Breakout NIFTY (playbook helper)", overlay=true, max_labels_count=500)
+
+// --- Inputs (align with Python defaults where possible)
+tzInput = input.string("Asia/Kolkata", "Timezone")
+minRefPts    = input.float(5.0, "Min reference range (points)", minval=0)
+bodyMinFrac  = input.float(0.35, "Min body / range", minval=0.05, maxval=1.0)
+volMult      = input.float(1.0, "Volume vs SMA mult", minval=0)
+volLen       = input.int(12, "Volume SMA length", minval=1)
+emaLen       = input.int(20, "EMA length", minval=1)
+maxVwapDev   = input.float(0.012, "Max |close-VWAP|/VWAP", minval=0.0001, step=0.001)
+
+// --- Clock (bar open time)
+h = hour(time, tzInput)
+mi = minute(time, tzInput)
+
+isRefBar = h == 14 and mi == 55
+inEntry  = (h == 15 and mi == 0) or (h == 15 and mi == 5)
+
+var float refHigh = na
+var float refLow  = na
+if isRefBar
+    refHigh := high
+    refLow  := low
+
+plot(refHigh, title="Ref high", color=color.new(color.teal, 0), linewidth=2, style=plot.style_steplinebr)
+plot(refLow, title="Ref low", color=color.new(color.orange, 0), linewidth=2, style=plot.style_steplinebr)
+
+refRange = not na(refHigh) and not na(refLow) ? refHigh - refLow : na
+refSizeOK = not na(refRange) and refRange >= minRefPts
+
+rng = math.max(high - low, syminfo.mintick)
+bodyFrac = rng > 0 ? math.abs(close - open) / rng : 0.0
+
+brkLong  = refSizeOK and not na(refHigh) and close > refHigh
+brkShort = refSizeOK and not na(refLow)  and close < refLow
+
+dirLong  = brkLong and not brkShort
+dirShort = brkShort and not brkLong
+
+ema20 = ta.ema(close, emaLen)
+v = ta.vwap(hlc3)
+volAvg = ta.sma(volume, volLen)
+
+alignLong  = dirLong  and close >= v and close >= ema20
+alignShort = dirShort and close <= v and close <= ema20
+
+bodyOK = bodyFrac >= bodyMinFrac
+volOK  = not na(volAvg) and volume >= volAvg * volMult
+extOK  = not na(v) and v != 0 and math.abs(close - v) / v <= maxVwapDev
+
+tradeOK = inEntry and (alignLong or alignShort) and bodyOK and volOK and extOK
+
+buildSkipMsg() =>
+    string msg = ""
+    if not refSizeOK
+        msg += "REF_SMALL "
+    if brkLong and brkShort
+        msg += "BOTH_DIRS "
+    if not brkLong and not brkShort
+        msg += "NO_BREAK "
+    if (brkLong or brkShort) and not (alignLong or alignShort)
+        msg += "ALIGN "
+    if not bodyOK
+        msg += "BODY "
+    if not volOK
+        msg += "VOL "
+    if not extOK
+        msg += "VWAP_EXT "
+    msg
+
+if inEntry and (brkLong or brkShort)
+    string lbl = tradeOK ? "TRADE" : "SKIP: " + buildSkipMsg()
+    color col = tradeOK ? color.new(color.green, 20) : color.new(color.red, 20)
+    label.new(bar_index, high, text=lbl, style=label.style_label_down, color=col, textcolor=color.white, size=size.small)
