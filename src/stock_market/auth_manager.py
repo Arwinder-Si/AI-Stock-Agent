@@ -18,15 +18,22 @@ def get_fresh_token():
     current_otp = totp.now()
 
     # 2. Call Dhan Auth API
-    url = f"https://auth.dhan.co/app/generateAccessToken?dhanClientId={client_id}&pin={pin}&totp={current_otp}"
+    url = "https://auth.dhan.co/app/generateAccessToken"
+    payload = {
+        "dhanClientId": client_id,
+        "pin": pin,
+        "totp": current_otp
+    }
     headers = {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/119.0.0.0 Safari/537.36'
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/119.0.0.0 Safari/537.36',
+        'Content-Type': 'application/json'
     }
     
     print(f"Requesting fresh access token for Client ID ending in ...{client_id[-4:]}")
     print(f"Generated TOTP: {current_otp}")
     
-    response = requests.post(url, headers=headers)
+    # Try with both body and params as some endpoints are inconsistent
+    response = requests.post(url, json=payload, headers=headers)
     
     if response.status_code == 200:
         data = response.json()
