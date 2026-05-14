@@ -24,8 +24,8 @@ class DhanProvider:
 
     def __init__(self, client_id: str, access_token: str) -> None:
         from dhanhq import dhanhq
-        # Use keyword arguments to avoid positional confusion
-        self.dhan = dhanhq(access_token=access_token)
+        # Initializing with both client_id and access_token as strings
+        self.dhan = dhanhq(str(client_id), str(access_token))
 
     def option_chain(self, expiry: str) -> Any:
         # Underlying security id for NIFTY in Dhan examples is often 13.
