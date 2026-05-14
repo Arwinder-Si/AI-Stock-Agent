@@ -21,12 +21,23 @@ jobs:
 
       - name: Install Dependencies
         run: |
-          pip install pandas pytz dhanhq
+          pip install pandas pytz dhanhq requests pyotp
+
+      - name: Generate Fresh Access Token
+        env:
+          DHAN_CLIENT_ID: ${{ secrets.DHAN_CLIENT_ID }}
+          DHAN_PIN: ${{ secrets.DHAN_PIN }}
+          DHAN_TOTP_SECRET: ${{ secrets.DHAN_TOTP_SECRET }}
+          PYTHONPATH: src
+        run: |
+          python src/stock_market/auth_manager.py
+          # Save the token to GitHub environment for next step
+          echo "DHAN_ACCESS_TOKEN=$(cat dhan_token.txt)" >> $GITHUB_ENV
 
       - name: Run Daily Agent Recap
         env:
           DHAN_CLIENT_ID: ${{ secrets.DHAN_CLIENT_ID }}
-          DHAN_ACCESS_TOKEN: ${{ secrets.DHAN_ACCESS_TOKEN }}
+          # DHAN_ACCESS_TOKEN is now coming from the environment above
           PYTHONPATH: src
         run: |
           python src/stock_market/live_agent_runner.py
