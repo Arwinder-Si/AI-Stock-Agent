@@ -23,9 +23,9 @@ class DhanProvider:
     """
 
     def __init__(self, client_id: str, access_token: str) -> None:
-        from dhanhq import dhanhq
-        # In this version of dhanhq, only access_token is required.
-        self.dhan = dhanhq(access_token)
+        import dhanhq
+        # The class is located at dhanhq.dhanhq
+        self.dhan = dhanhq.dhanhq(client_id, access_token)
 
     def option_chain(self, expiry: str) -> Any:
         # Underlying security id for NIFTY in Dhan examples is often 13.
