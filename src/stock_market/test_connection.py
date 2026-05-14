@@ -11,19 +11,33 @@ def test_dhan_connection():
         token = get_fresh_token()
         client_id = os.getenv("DHAN_CLIENT_ID")
         
-        # 2. Test API Access
-        try:
-            dhan = dhanhq(client_id, token)
-        except TypeError:
-            dhan = dhanhq(token)
-        profile = dhan.get_profile()
+        # 2. Test API Access (Auto-Discovery Mode)
+        dhan = None
+        signatures = [
+            lambda: dhanhq(client_id, token),
+            lambda: dhanhq(token),
+            lambda: dhanhq(client_id=client_id, access_token=token)
+        ]
         
-        if profile.get('status') == 'success':
+        for i, sig in enumerate(signatures):
+            try:
+                print(f" - Attempting connection signature {i+1}...")
+                dhan = sig()
+                # Verify it actually works by calling a simple method
+                profile = dhan.get_profile()
+                if profile.get('status') == 'success':
+                    break
+            except Exception as e:
+                print(f"   Signature {i+1} failed: {str(e)}")
+                continue
+
+        if dhan and profile.get('status') == 'success':
             name = profile.get('data', {}).get('clientName', 'Unknown')
             print(f"\n[SUCCESS] Connected to Dhan as: {name}")
             print("Your Automated Login system is working perfectly!")
         else:
-            print(f"\n[FAILURE] API connected but profile fetch failed: {profile}")
+            print(f"\n[FAILURE] Could not find a working connection signature.")
+            print(f"Last profile response: {profile if 'profile' in locals() else 'None'}")
             
     except Exception as e:
         print(f"\n[ERROR] Connection Test Failed: {str(e)}")
