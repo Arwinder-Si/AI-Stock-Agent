@@ -12,7 +12,10 @@ def test_dhan_connection():
         client_id = os.getenv("DHAN_CLIENT_ID")
         
         # 2. Test API Access
-        dhan = dhanhq(client_id, token)
+        try:
+            dhan = dhanhq(client_id, token)
+        except TypeError:
+            dhan = dhanhq(token)
         profile = dhan.get_profile()
         
         if profile.get('status') == 'success':
